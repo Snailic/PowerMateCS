@@ -36,9 +36,9 @@ namespace PowerMateCS
         private readonly static Guid guidLed = new Guid(uuidLed);
 
         private readonly static Dictionary<string, Powermate> blePowermates = new Dictionary<string, Powermate> {
-            { "x", new Powermate("vivaldi") },
-            { "y", new Powermate("vivaldi") },
-            { "z", new Powermate("vivaldi") }
+            { "00:12:92:08:2b:a1", new Powermate("vivaldi") },
+            { "00:12:92:08:2d:f9", new Powermate("vivaldi") },
+            { "00:12:92:08:2b:c8", new Powermate("vivaldi") }
         };
 
         static void Main(string[] args)
@@ -64,9 +64,6 @@ namespace PowerMateCS
             Console.WriteLine("Listening for BLE Devices...");
         }
 
-        /// <summary>
-        /// Stops watching for all nearby Bluetooth devices.
-        /// </summary>
         private static void StopBleDeviceWatcher()
         {
             if (deviceWatcher != null)
@@ -170,7 +167,7 @@ namespace PowerMateCS
                 }
             } catch (Exception ex)
             {
-                blePowermates[service.DeviceId].isSubscribing = false;
+                blePowermates[device].isSubscribing = false;
                 Console.WriteLine("Error: Restricted service. Can't read characteristics: " + ex.ToString());
             }
 
@@ -274,7 +271,7 @@ namespace PowerMateCS
         {
             float? volume = AppVolumeController.GetApplicationVolume(blePowermates[sender].processId) ?? -1f;
 
-            if (!volume.HasValue || volume == -1f)
+            if (!volume.HasValue || volume == -1f || blePowermates[sender].processId == 0)
             {
                 blePowermates[sender].processId = GetProcessIDByName(blePowermates[sender].processName);
                 volume = AppVolumeController.GetApplicationVolume(blePowermates[sender].processId);
@@ -286,7 +283,7 @@ namespace PowerMateCS
         public static void ActOnPowerMate(GattCharacteristic sender, byte value)
         {
             string device = sender.Service.Device.DeviceInformation.Id.Substring(41);
-            Console.WriteLine("Sender: " + device + " | Action: " + value);
+            Console.WriteLine("Sender: " + device + " | Action: 0x" + value.ToString("X2"));
             
             switch ((POWERMATE_ACTIONS)value)
             {
