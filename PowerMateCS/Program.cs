@@ -162,7 +162,7 @@ namespace PowerMateCS
                 }
                 else
                 {
-                    blePowermates[service.DeviceId].isSubscribing = false;
+                    blePowermates[device].isSubscribing = false;
                     Console.WriteLine("Error accessing service.");
                 }
             } catch (Exception ex)
