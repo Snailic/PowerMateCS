@@ -9,6 +9,42 @@ namespace PowerMateCS
 {
     class AppVolumeController
     {
+        public static int GetProcessIDByName(string name)
+        {
+            foreach (var process in AppVolumeController.GetAudioProcesses())
+            {
+                //Console.WriteLine(String.Format("id: {0} | name: {1} | title: {2}", process.Id, process.ProcessName, process.MainWindowTitle));
+                if (process.ProcessName == name)
+                {
+                    return process.Id;
+                }
+            }
+            return -1;
+        }
+
+        public static bool StepVolumeByProcessId(int id, float amount)
+        {
+            float? volume = GetApplicationVolume(id) ?? -1f;
+
+            if (volume == -1f)
+            {
+                return false;
+            }
+
+            if (volume.HasValue)
+            {
+                SetApplicationVolume(id, (float)volume.Value + amount);
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool StepVolumeByProcessName(string name, float amount)
+        {
+            return StepVolumeByProcessId(GetProcessIDByName(name), amount);
+        }
+
         public static float? GetApplicationVolume(int pid)
         {
             ISimpleAudioVolume volume = GetVolumeObject(pid);
@@ -31,6 +67,17 @@ namespace PowerMateCS
             volume.GetMute(out mute);
             Marshal.ReleaseComObject(volume);
             return mute;
+        }
+
+        public static bool? ToggleApplicationMute(int pid)
+        {
+            bool? muted = GetApplicationMute(pid);
+            if (muted != null)
+            {
+                SetApplicationMute(pid, !(bool)muted);
+                return true;
+            }
+            return null;
         }
 
         public static void SetApplicationVolume(int pid, float level)

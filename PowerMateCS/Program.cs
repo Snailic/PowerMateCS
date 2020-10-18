@@ -5,25 +5,11 @@ using Windows.Devices.Enumeration;
 using System.Collections.Generic;
 using Windows.Storage.Streams;
 using Windows.Devices.Bluetooth.Advertisement;
+using Windows.Storage.Pickers;
+using System.Runtime.CompilerServices;
 
 namespace PowerMateCS
 {
-    class Powermate
-    {
-        public string processName { get; set; }
-        public int processId { get; set; }
-        public GattCharacteristic readCharacteristic { get; set; }
-
-        public bool isSubscribing = false;
-
-        public Powermate(string name)
-        {
-            this.processName = name;
-            this.processId = -1;
-        }
-
-    }
-
     class Program
     {
         private static BluetoothLEAdvertisementWatcher deviceWatcher;
@@ -35,14 +21,46 @@ namespace PowerMateCS
         private readonly static string uuidLed = "847d189e-86ee-4bd2-966f-800832b1259d";
         private readonly static Guid guidLed = new Guid(uuidLed);
 
-        private readonly static Dictionary<string, Powermate> blePowermates = new Dictionary<string, Powermate> {
-            { "00:12:92:08:2b:a1", new Powermate("vivaldi") },
-            { "00:12:92:08:2d:f9", new Powermate("vivaldi") },
-            { "00:12:92:08:2b:c8", new Powermate("vivaldi") }
-        };
+        /*
+         *  "00:12:92:08:2b:a1"
+         *  "00:12:92:08:2d:f9"
+         *  "00:12:92:08:2b:c8"
+         */
+
+        private readonly static Dictionary<string, Powermate> blePowermates = new Dictionary<string, Powermate> {};
 
         static void Main(string[] args)
         {
+            Powermate a = new Powermate();
+            a.processName = "vivaldi";
+            a.processId = AppVolumeController.GetProcessIDByName(a.processName);
+
+            a.OnPress += (powermate) => {
+                bool? muted = AppVolumeController.ToggleApplicationMute(powermate.processId);
+                if(muted == null)
+                {
+                    powermate.processId = AppVolumeController.GetProcessIDByName(powermate.processName);
+                    AppVolumeController.ToggleApplicationMute(powermate.processId);
+                }
+            };
+
+            a.OnLeft += (powermate) =>
+            {
+                if (!AppVolumeController.StepVolumeByProcessId(powermate.processId, -2f))
+                {
+                    powermate.processId = AppVolumeController.GetProcessIDByName(powermate.processName);
+                }
+            };
+
+            a.OnRight += (powermate) =>
+            {
+                if (!AppVolumeController.StepVolumeByProcessId(powermate.processId, 2f))
+                {
+                    powermate.processId = AppVolumeController.GetProcessIDByName(powermate.processName);
+                }
+            };
+
+            blePowermates.Add("00:12:92:08:2b:a1", a);
 
             StartBleDeviceWatcher();
 
@@ -82,19 +100,18 @@ namespace PowerMateCS
             // Protect against race condition if the task runs after the app stopped the deviceWatcher.
             if (sender == deviceWatcher)
             {
-                string _ = bleArgs.BluetoothAddress.ToString("X");
+                ulong bleAddress = bleArgs.BluetoothAddress;
+                string bleMac = bleAddress.ToString("X");
                 
-                if (!_.StartsWith("1292") || _.Length >  10)
-                {
+                if (!bleMac.StartsWith("1292") || bleMac.Length >  10)
                     return;
-                }
 
-                BluetoothLEDevice bleDevice = await BluetoothLEDevice.FromBluetoothAddressAsync(bleArgs.BluetoothAddress);
+                BluetoothLEDevice bleDevice = await BluetoothLEDevice.FromBluetoothAddressAsync(bleAddress);
 
                 if (bleDevice != null)
                 {
                     DeviceInformation bleDeviceInfo = bleDevice.DeviceInformation;
-                    if (true)
+                    try 
                     {
                         if (bleDeviceInfo.Name.Contains("PowerMate"))
                         {
@@ -112,26 +129,32 @@ namespace PowerMateCS
                             {
                                 blePowermates[bleSender].isSubscribing = true;
                                 GattDeviceServicesResult result = await bleDevice.GetGattServicesAsync(BluetoothCacheMode.Uncached);          
-
-                                if (result.Status == GattCommunicationStatus.Success)
+                                if(result != null)
                                 {
-                                    var services = result.Services;
-                                    Console.WriteLine(String.Format("Found {0} services", services.Count));
-                                    foreach (GattDeviceService service in services)
+                                    if (result.Status == GattCommunicationStatus.Success)
                                     {
-                                        Console.WriteLine(String.Format("└{0}", service.Uuid));
+                                        var services = result.Services;
+                                        Console.WriteLine(String.Format("Found {0} services", services.Count));
+                                        foreach (GattDeviceService service in services)
+                                        {
+                                            Console.WriteLine(String.Format("└{0}", service.Uuid));
+                                        }
+
+                                        GetCharacteristics(services[3]);
+
                                     }
-
-                                    GetCharacteristics(services[3]);
-
-                                }
-                                else
-                                {
-                                    blePowermates[bleSender].isSubscribing = false;
-                                    Console.WriteLine("Device unreachable");
+                                    else
+                                    {
+                                        blePowermates[bleSender].isSubscribing = false;
+                                        Console.WriteLine("Device unreachable");
+                                    }
                                 }
                             }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Error: " + ex.ToString());
                     }
                 }
             }
@@ -255,31 +278,6 @@ namespace PowerMateCS
             HOLD_6 = 0x77
         };
 
-        public static int GetProcessIDByName(string name)
-        {
-            foreach (var process in AppVolumeController.GetAudioProcesses())
-            {
-                Console.WriteLine(String.Format("id: {0} | name: {1} | title: {2}", process.Id, process.ProcessName, process.MainWindowTitle));
-                if (process.ProcessName == name)
-                {
-                    return process.Id;
-                }
-            }
-            return -1;
-        }
-        public static void StepVolume(float stepper, string sender)
-        {
-            float? volume = AppVolumeController.GetApplicationVolume(blePowermates[sender].processId) ?? -1f;
-
-            if (!volume.HasValue || volume == -1f || blePowermates[sender].processId == 0)
-            {
-                blePowermates[sender].processId = GetProcessIDByName(blePowermates[sender].processName);
-                volume = AppVolumeController.GetApplicationVolume(blePowermates[sender].processId);
-            }
-
-            AppVolumeController.SetApplicationVolume(blePowermates[sender].processId, (float)volume.Value + stepper);
-        }
-
         public static void ActOnPowerMate(GattCharacteristic sender, byte value)
         {
             string device = sender.Service.Device.DeviceInformation.Id.Substring(41);
@@ -288,27 +286,21 @@ namespace PowerMateCS
             switch ((POWERMATE_ACTIONS)value)
             {
                 case (POWERMATE_ACTIONS.PRESS):
-                    bool? muted = AppVolumeController.GetApplicationMute(blePowermates[device].processId);
-                    if(muted == null) {
-                        blePowermates[device].processId = GetProcessIDByName(blePowermates[device].processName);
-                        AppVolumeController.SetApplicationMute(blePowermates[device].processId, (bool)!AppVolumeController.GetApplicationMute(blePowermates[device].processId));
-                    }
-                    else
-                    {
-                        AppVolumeController.SetApplicationMute(blePowermates[device].processId, (bool)!muted);
-                    }
+                    blePowermates[device].Press();
                     break;
                 case (POWERMATE_ACTIONS.LONG_RELEASE):
                     break;
                 case (POWERMATE_ACTIONS.LEFT):
-                    StepVolume(-2f, device);
+                    blePowermates[device].Left();
                     break;
                 case (POWERMATE_ACTIONS.RIGHT):
-                    StepVolume(2f, device);
+                    blePowermates[device].Right();
                     break;
                 case (POWERMATE_ACTIONS.PRESSED_LEFT):
+                    blePowermates[device].PressLeft();
                     break;
                 case (POWERMATE_ACTIONS.PRESSED_RIGHT):
+                    blePowermates[device].PressRight();
                     break;
                 case (POWERMATE_ACTIONS.HOLD_1):
                     break;
