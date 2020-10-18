@@ -22,7 +22,6 @@ namespace PowerMateCS
         private readonly static Guid guidLed = new Guid(uuidLed);
 
         /*
-         *  "00:12:92:08:2b:a1"
          *  "00:12:92:08:2d:f9"
          *  "00:12:92:08:2b:c8"
          */
@@ -60,7 +59,7 @@ namespace PowerMateCS
                 }
             };
 
-            blePowermates.Add("00:12:92:08:2b:a1", a);
+            blePowermates.Add("00:12:92:08:2b:c8", a);
 
             StartBleDeviceWatcher();
 
@@ -103,6 +102,7 @@ namespace PowerMateCS
                 ulong bleAddress = bleArgs.BluetoothAddress;
                 string bleMac = bleAddress.ToString("X");
                 
+                //Griffon Technology's OUI starts with 00, leading 0's get omitted.
                 if (!bleMac.StartsWith("1292") || bleMac.Length >  10)
                     return;
 
@@ -128,7 +128,8 @@ namespace PowerMateCS
                             if (!blePowermates[bleSender].isSubscribing)
                             {
                                 blePowermates[bleSender].isSubscribing = true;
-                                GattDeviceServicesResult result = await bleDevice.GetGattServicesAsync(BluetoothCacheMode.Uncached);          
+                                GattDeviceServicesResult result = await bleDevice.GetGattServicesAsync(BluetoothCacheMode.Uncached);
+                                
                                 if(result != null)
                                 {
                                     if (result.Status == GattCommunicationStatus.Success)
@@ -166,7 +167,7 @@ namespace PowerMateCS
             string device = service.Device.DeviceInformation.Id.Substring(41);
             try
             {
-                var accessStatus = await service.RequestAccessAsync();
+                DeviceAccessStatus accessStatus = await service.RequestAccessAsync();
                 if(accessStatus == DeviceAccessStatus.Allowed)
                 {
                     GattCharacteristicsResult result = await service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
@@ -199,7 +200,7 @@ namespace PowerMateCS
                 foreach(GattCharacteristic characteristic in characteristics)
                 {
                     Console.WriteLine("└Characteristic uuid: " + characteristic.Uuid.ToString());
-                    if (uuid_equal(uuidRead, characteristic.Uuid))
+                    if (UuidEquals(uuidRead, characteristic.Uuid))
                     {
                         SubscribeToValueChange(characteristic);
                         Console.WriteLine(" └Subscribing to Read Characteristic");
@@ -208,7 +209,7 @@ namespace PowerMateCS
             }
         }
 
-        public static bool uuid_equal(string left, Guid right)
+        public static bool UuidEquals(string left, Guid right)
         {
             return (right.ToString().CompareTo(left) == 0);
         }
